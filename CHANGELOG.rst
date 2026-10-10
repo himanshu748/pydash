@@ -6,6 +6,8 @@ Changelog
 Unreleased
 ----------
 
+- Fix ``curry`` and ``curry_right`` counting already-bound arguments when inferring the arity of
+  instance methods, class methods, callable objects and bound built-ins.
 - Fix ``truncate`` dropping an extra character when the string separator is not found.
 - Fix ``throttle`` dropping calls during the wait period: invoke once on the trailing edge with
   the latest arguments. Trailing invocations run in a daemon timer thread.

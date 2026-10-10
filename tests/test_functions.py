@@ -1,3 +1,4 @@
+from functools import wraps
 import heapq
 import threading
 import time
@@ -108,6 +109,64 @@ def test_curry_arity_max_from_func():
     result = _.reduce_(ids, curried_func_with_data, {})
 
     assert result == {1: 3}
+
+
+@parametrize("wrapper", [_.curry, _.curry_right])
+@parametrize("method_name", ["method", "class_method", "__call__"])
+def test_curry_bound_callable_arity(wrapper, method_name):
+    class Joiner:
+        def method(self, left, right):
+            return left + right
+
+        @classmethod
+        def class_method(cls, left, right):
+            return left + right
+
+        def __call__(self, left, right):
+            return left + right
+
+    instance = Joiner()
+    func = instance if method_name == "__call__" else getattr(instance, method_name)
+    curried = wrapper(func)
+    assert curried.arity == 2
+    assert curried("a")._argcount == 1
+    expected = "ab" if wrapper is _.curry else "ba"
+    assert curried("a")("b") == expected
+    assert curried("a", "b") == "ab"
+
+
+@parametrize("wrapper", [_.curry, _.curry_right])
+def test_curry_bound_builtin_arity(wrapper):
+    values = []
+    assert wrapper(values.append)("value") is None
+    assert values == ["value"]
+
+
+@parametrize("wrapper", [_.curry, _.curry_right])
+def test_curry_arity_inference_compatibility(wrapper):
+    def original(left, right):
+        return left + right
+
+    @wraps(original)
+    def decorated(value):
+        return value * 2
+
+    # Inspect the wrapper, as getfullargspec did, rather than __wrapped__.
+    assert wrapper(decorated).arity == 1
+    assert wrapper(decorated)(3) == 6
+
+    def optional(left, right=3, *extra, keyword_only=10):
+        return left + right + sum(extra) + keyword_only
+
+    # Defaults count; *args and keyword-only parameters do not.
+    assert wrapper(optional).arity == 2
+    assert wrapper(optional)(1)(2) == 13
+
+    class Adder:
+        def add(self, left, right=3):
+            return left + right
+
+    assert wrapper(Adder().add, arity=1)(2) == 5
 
 
 @parametrize(

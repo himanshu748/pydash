@@ -7,7 +7,7 @@ Functions that wrap other functions.
 from __future__ import annotations
 
 from functools import cached_property
-from inspect import getfullargspec
+from inspect import Parameter, signature
 import itertools
 import threading
 import time
@@ -212,7 +212,14 @@ class Curry(t.Generic[T1, T]):
 
     def __init__(self, func, arity, args=None, kwargs=None) -> None:
         self.func = func
-        self.arity = len(getfullargspec(func).args) if arity is None else arity
+        self.arity = (
+            sum(
+                parameter.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD)
+                for parameter in signature(func, follow_wrapped=False).parameters.values()
+            )
+            if arity is None
+            else arity
+        )
         self.args = () if args is None else args
         self.kwargs = {} if kwargs is None else kwargs
 
