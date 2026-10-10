@@ -1,5 +1,7 @@
+from collections import UserDict
 from decimal import Decimal
 import math
+from types import MappingProxyType
 
 import pytest
 
@@ -7,6 +9,34 @@ import pydash as _
 
 
 parametrize = pytest.mark.parametrize
+
+
+@parametrize("mapping", [dict, UserDict, MappingProxyType])
+@parametrize("func,expected", [(_.min_, 1), (_.max_, 3)])
+def test_extrema_mapping_values(mapping, func, expected):
+    values = mapping({"first": 3, "second": 1, "third": 2})
+    assert func(values) == expected
+    assert dict(values) == {"first": 3, "second": 1, "third": 2}
+
+
+@parametrize("mapping", [dict, UserDict, MappingProxyType])
+@parametrize("func,expected_key", [(_.min_by, "second"), (_.max_by, "first")])
+@parametrize("iteratee", ["score", lambda value: value["score"]])
+def test_extrema_mapping_iteratee(mapping, func, expected_key, iteratee):
+    records = {"first": {"score": 3}, "second": {"score": 1}, "third": {"score": 2}}
+    values = mapping(records)
+    assert func(values, iteratee) is records[expected_key]
+    assert dict(values) == records
+
+
+@parametrize("mapping", [dict, UserDict, MappingProxyType])
+@parametrize("func", [_.min_, _.max_, _.min_by, _.max_by])
+def test_extrema_empty_mapping(mapping, func):
+    values = mapping({})
+    default = object()
+    assert func(values, default=default) is default
+    with pytest.raises(ValueError, match="empty"):
+        func(values)
 
 
 @parametrize(
