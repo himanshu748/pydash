@@ -187,6 +187,70 @@ def test_debounce_max_wait():
     assert calls[0] - start >= max_wait - 10
 
 
+@parametrize("trigger", ["timer", "max_wait"])
+@parametrize("raise_after_scheduling", [False, True])
+def test_debounce_reentrant_call_starts_new_burst(throttle_clock, trigger, raise_after_scheduling):
+    advance, timers = throttle_clock
+    calls = []
+    errors = []
+
+    def func(value, *, suffix):
+        calls.append((value, suffix))
+        if value == "first":
+            debounced("nested", suffix="b")
+            if raise_after_scheduling:
+                raise ValueError("failed")
+        return value
+
+    debounced = _.debounce(func, 100, max_wait=150)
+    debounced("first", suffix="a")
+    if trigger == "max_wait":
+        advance(150, run_timers=False)
+
+    def invoke():
+        try:
+            if trigger == "max_wait":
+                debounced("first", suffix="a")
+            else:
+                advance(100)
+        except ValueError as error:
+            errors.append(str(error))
+
+    # Bound the regression: the old non-reentrant lock deadlocks this callback.
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    worker.join(1)
+    assert not worker.is_alive(), "the callback deadlocked when it scheduled another call"
+    assert calls == [("first", "a")]
+    assert errors == (["failed"] if raise_after_scheduling else [])
+    assert debounced.last_result == (None if raise_after_scheduling else "first")
+    assert debounced._timer is timers[-1]
+
+    advance(100)
+    assert calls == [("first", "a"), ("nested", "b")]
+    assert debounced.last_result == "nested"
+    advance(200)
+    assert len(calls) == 2
+
+
+def test_debounce_failed_callback_ends_burst(throttle_clock):
+    advance, _timers = throttle_clock
+    func = mock.Mock(side_effect=[ValueError("failed"), "result"])
+    debounced = _.debounce(func, 100, max_wait=150)
+    debounced("first")
+    with pytest.raises(ValueError, match="failed"):
+        advance(100)
+
+    advance(100, run_timers=False)
+    assert debounced("next") is None
+    assert func.call_count == 1
+    advance(99)
+    assert func.call_count == 1
+    advance(1)
+    assert func.call_args_list == [mock.call("first"), mock.call("next")]
+    assert debounced.last_result == "result"
+
+
 @parametrize(
     "func,wait,args,kwargs,expected",
     [(lambda a, b, c: (a, b, c), 250, (1, 2), {"c": 3}, (1, 2, 3))],
